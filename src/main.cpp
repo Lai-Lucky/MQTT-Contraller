@@ -27,11 +27,12 @@ const char* api_key = "version=2018-10-31&res=products%2Fw2118dMTYQ%2Fdevices%2F
 
 /********* MQTT 主题 *********/
 const char* pubTopic = "$sys/w2118dMTYQ/test-v1/dp/post/json";
-const char* replyTopic="$sys/w2118dMTYQ/test-v1/dp/post/json/accepted";
-const char* getTopic ="$sys/w2118dMTYQ/test-v1/cmd/#";
+const char* replyTopic= "$sys/w2118dMTYQ/test-v1/dp/post/json/accepted";
+const char* getTopic = "$sys/w2118dMTYQ/test-v1/cmd/#";
+const char* backTopic = "$sys/w2118dMTYQ/test-v1/cmd/response/#";
 
 /*平台下发信息变量存储*/
-String data_get[32];
+byte data_get[32];
 
 
 WiFiClient espClient;
@@ -59,16 +60,7 @@ void loop() {
   /* 接受平台下发命令 */
   client.subscribe(getTopic); // 订阅属性下发
 
-  //状态反馈，控制部分见callback函数
-  if(digitalRead(19)==HIGH)
-  {
-    sendSensorData(1);
-  }
-  if(digitalRead(19)==LOW)
-  {
-    sendSensorData(0);
-  }
-
+ 
 }
 
 
@@ -99,14 +91,37 @@ void callback(char* topic, byte* payload, unsigned int length) {
     data_get[i]=payload[i];
   }
 
-  if(*data_get == "led_ON")
+  if(payload[1]== '1')
   {
     digitalWrite(19,HIGH);
   }
-  else if(*data_get == "led_OFF")
+  else if(payload[1]== '0')
   {
     digitalWrite(19,LOW);
   }
+
+  // if((String)* data_get == "led_ON")
+  // {
+  //   digitalWrite(19,HIGH);
+
+  //   if(digitalRead(19)==HIGH)
+  //     client.publish(backTopic, "ON");
+  //   else
+  //     client.publish(backTopic, "ERROR");
+
+  // }
+  // else if( (String)* data_get == "led_OFF")
+  // {
+  //   digitalWrite(19,LOW);
+
+  // if(digitalRead(19)==HIGH)
+  //   client.publish(backTopic, "OFF");
+  // else
+  //   client.publish(backTopic, "ERROR");
+    
+  // }
+ 
+ 
 
   Serial.println();
   Serial.println();
@@ -164,6 +179,6 @@ void sendSensorData(int data)
     Serial.println("发送失败");
   }
 
-  delay(200);
+  delay(500);
 }
 
