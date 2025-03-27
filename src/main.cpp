@@ -12,7 +12,9 @@
 void setup_wifi();
 void callback(char* topic, byte* payload, unsigned int length);
 void reconnect();
-void sendSensorData(int data) ;
+void sendSensorData(int data);
+void set_reply_Data(String ID);
+void parseJSON(const char* json);
 
 /************** WiFi 配置 **************/
 const char* ssid = "abc";         // WiFi SSID
@@ -22,18 +24,14 @@ const char* password = "12345678"; // WiFi 密码
 const char* mqtt_server = "mqtts.heclouds.com";  
 const int mqtt_port = 1883; 
 const char* device_id = "test-v1";    
-const char* product_id = "w2118dMTYQ"; 
-const char* api_key = "version=2018-10-31&res=products%2Fw2118dMTYQ%2Fdevices%2Ftest-v1&et=999986799814791288&method=md5&sign=r68UE6C6rP%2FkQoTUd8TiOg%3D%3D";
+const char* product_id = "61041c855G"; 
+const char* api_key = "version=2018-10-31&res=products%2F61041c855G%2Fdevices%2Ftest-v1&et=999986799814791288&method=md5&sign=ekidJHbNtTvN3oQEJxVXJA%3D%3D";
 
 /********* MQTT 主题 *********/
-const char* pubTopic = "$sys/w2118dMTYQ/test-v1/dp/post/json";
-const char* replyTopic= "$sys/w2118dMTYQ/test-v1/dp/post/json/accepted";
-const char* getTopic = "$sys/w2118dMTYQ/test-v1/cmd/#";
-const char* backTopic = "$sys/w2118dMTYQ/test-v1/cmd/response/#";
-
-/*平台下发信息变量存储*/
-byte data_get[32];
-
+const char* pubTopic = "$sys/61041c855G/test-v1/thing/property/post";
+const char* replyTopic="$sys/61041c855G/test-v1/thing/property/post/reply";
+const char* getTopic = "$sys/61041c855G/test-v1/thing/property/set";
+const char* set_replayTopice ="$sys/61041c855G/test-v1/thing/property/set_reply";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -57,10 +55,18 @@ void loop() {
   }
   client.loop();
 
-  /* 接受平台下发命令 */
-  client.subscribe(getTopic); // 订阅属性下发
 
- 
+  //led灯状态反馈
+  if(digitalRead(19)==1)
+  {
+    sendSensorData(1);
+  }
+  else if(digitalRead(19)==0)
+  {
+    sendSensorData(0);
+  }
+
+  delay(1000);
 }
 
 
@@ -82,46 +88,23 @@ void setup_wifi() {
 
 /************* MQTT 订阅回调函数 *************/
 void callback(char* topic, byte* payload, unsigned int length) {
+
+
   Serial.print("收到 MQTT 消息，主题: \n");
   Serial.println(topic);
   Serial.print("内容: ");
   for (int i = 0; i < length; i++) 
   {
     Serial.print((char)payload[i]);
-    data_get[i]=payload[i];
   }
 
-  if(payload[1]== '1')
-  {
-    digitalWrite(19,HIGH);
-  }
-  else if(payload[1]== '0')
-  {
-    digitalWrite(19,LOW);
-  }
+  // 转换 payload 为字符串
+  char json[length + 1];
+  memcpy(json, payload, length);
+  json[length] = '\0';
 
-  // if((String)* data_get == "led_ON")
-  // {
-  //   digitalWrite(19,HIGH);
-
-  //   if(digitalRead(19)==HIGH)
-  //     client.publish(backTopic, "ON");
-  //   else
-  //     client.publish(backTopic, "ERROR");
-
-  // }
-  // else if( (String)* data_get == "led_OFF")
-  // {
-  //   digitalWrite(19,LOW);
-
-  // if(digitalRead(19)==HIGH)
-  //   client.publish(backTopic, "OFF");
-  // else
-  //   client.publish(backTopic, "ERROR");
-    
-  // }
- 
- 
+  // 调用解析函数
+  parseJSON(json);
 
   Serial.println();
   Serial.println();
@@ -137,7 +120,8 @@ void reconnect() {
     if (client.connect(device_id, product_id, api_key)) 
     {
       Serial.println("连接成功!");
-      client.subscribe(replyTopic); // 订阅属性下发
+      client.subscribe(replyTopic); // 订阅系统回复属性下发
+      client.subscribe(getTopic); // 订阅系统设置属性下发
     } 
     else 
     {
@@ -160,13 +144,15 @@ void reconnect() {
   }
 }
 
-/************JSON数据构建************/
+/************JSON数据相关函数************/
+
+/**** 发送数据到平台 ****/
 void sendSensorData(int data) 
 {
   JsonDocument doc;
   doc["id"] = String(millis());  // 使用时间戳作为唯一ID
   doc["version"] = "1.0";
-  doc["dp"]["led"]["v"]= data;
+  doc["params"]["led"]["value"]= data;
 
   String payload;
   serializeJson(doc, payload);
@@ -179,6 +165,72 @@ void sendSensorData(int data)
     Serial.println("发送失败");
   }
 
-  delay(500);
+  delay(200);
 }
 
+/**** 回复属性设置 ****/
+void set_reply_Data(String ID) 
+{
+  JsonDocument doc;
+  doc["id"] = ID;  // 使用时间戳作为唯一ID
+  doc["code"] = "200";
+  doc["msg"]= "success";
+
+  String payload;
+  serializeJson(doc, payload);
+  if (client.publish(set_replayTopice, payload.c_str())) 
+  {
+    Serial.println("数据已发送: " + payload);
+  } 
+  else 
+  {
+    Serial.println("发送失败");
+  }
+
+  delay(200);
+}
+
+/**** 解析平台指令 ****/
+void parseJSON(const char* json) {
+  // 1. 修正 StaticJsonDocument 声明
+  JsonDocument doc; // 确保足够内存空间
+
+  // 2. 解析 JSON
+  DeserializationError error = deserializeJson(doc, json);
+  
+  if (error) {
+    Serial.print("JSON 解析错误: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  if (doc["params"].isNull()) { 
+    Serial.println("缺少 params 字段");
+    return;
+  }
+
+  JsonObject params = doc["params"];
+  
+  if (params["led-controller"].isNull()) {
+    Serial.println("缺少 led-controller 字段");
+    return;
+  }
+
+  const char* ledState = params["led-controller"];
+  Serial.print("LED 状态: ");
+  Serial.println(ledState);
+
+  String ID = doc["id"];
+
+  if (strcmp(ledState, "led-ON") == 0) 
+  {
+    digitalWrite(19, HIGH);
+    set_reply_Data(ID); 
+  } 
+  else if (strcmp(ledState, "led-OF") == 0)
+  {
+    digitalWrite(19, LOW);
+    set_reply_Data(ID); 
+  }
+
+}
