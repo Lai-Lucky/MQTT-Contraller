@@ -1,4 +1,4 @@
-// 攀登：补光灯控制 - OneNet 物联网接入
+// 攀登：补光灯控制(子设备控制) - OneNet 物联网接入
 // 供电：12V
 // 通信：RS485-TTL
 
@@ -175,6 +175,7 @@ void set_reply_Data(String ID)
   doc["id"] = ID;  // 使用时间戳作为唯一ID
   doc["code"] = "200";
   doc["msg"]= "success";
+
 
   String payload;
   serializeJson(doc, payload);
