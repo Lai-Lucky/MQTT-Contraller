@@ -66,7 +66,7 @@ void loop() {
     sendSensorData(0);
   }
 
-  delay(1000);
+  delay(500);
 }
 
 
@@ -158,11 +158,11 @@ void sendSensorData(int data)
   serializeJson(doc, payload);
   if (client.publish(pubTopic, payload.c_str())) 
   {
-    Serial.println("数据已发送: " + payload);
+    Serial.println("send data success");
   } 
   else 
   {
-    Serial.println("发送失败");
+    Serial.println("send data fail");
   }
 
   delay(200);
@@ -180,11 +180,11 @@ void set_reply_Data(String ID)
   serializeJson(doc, payload);
   if (client.publish(set_replayTopice, payload.c_str())) 
   {
-    Serial.println("数据已发送: " + payload);
+    Serial.println("send data: " + payload);
   } 
   else 
   {
-    Serial.println("发送失败");
+    Serial.println("send data fail");
   }
 
   delay(200);
@@ -199,25 +199,22 @@ void parseJSON(const char* json) {
   DeserializationError error = deserializeJson(doc, json);
   
   if (error) {
-    Serial.print("JSON 解析错误: ");
     Serial.println(error.c_str());
     return;
   }
 
   if (doc["params"].isNull()) { 
-    Serial.println("缺少 params 字段");
     return;
   }
 
   JsonObject params = doc["params"];
   
   if (params["led-controller"].isNull()) {
-    Serial.println("缺少 led-controller 字段");
     return;
   }
 
   const char* ledState = params["led-controller"];
-  Serial.print("LED 状态: ");
+  Serial.print("LED : ");
   Serial.println(ledState);
 
   String ID = doc["id"];
