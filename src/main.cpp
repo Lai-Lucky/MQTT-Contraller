@@ -30,7 +30,9 @@ const char* api_key = "version=2018-10-31&res=products%2F61041c855G%2Fdevices%2F
 /********* MQTT 主题 *********/
 const char* pubTopic = "$sys/61041c855G/test-v1/thing/property/post";
 const char* replyTopic="$sys/61041c855G/test-v1/thing/property/post/reply";
-const char* getTopic = "$sys/61041c855G/test-v1/thing/property/set";
+const char* getTopic = "$sys/61041c855G/test-v1/thing/sub/property/get";
+const char* get_replyTopic = "$sys/61041c855G/test-v1/thing/sub/property/get_reply";
+const char* setTopic = "$sys/61041c855G/test-v1/thing/property/set";
 const char* set_replayTopice ="$sys/61041c855G/test-v1/thing/property/set_reply";
 
 WiFiClient espClient;
@@ -121,7 +123,8 @@ void reconnect() {
     {
       Serial.println("连接成功!");
       client.subscribe(replyTopic); // 订阅系统回复属性下发
-      client.subscribe(getTopic); // 订阅系统设置属性下发
+      client.subscribe(setTopic); // 订阅系统设置属性下发
+      client.subscribe(getTopic); // 订阅系统获取属性下发
     } 
     else 
     {
@@ -146,7 +149,7 @@ void reconnect() {
 
 /************JSON数据相关函数************/
 
-/**** 发送数据到平台 ****/
+/**** 发送状态数据到平台 ****/
 void sendSensorData(int data) 
 {
   JsonDocument doc;
@@ -181,6 +184,29 @@ void set_reply_Data(String ID)
   if (client.publish(set_replayTopice, payload.c_str())) 
   {
     Serial.println("send data: " + payload);
+  } 
+  else 
+  {
+    Serial.println("send data fail");
+  }
+
+  delay(200);
+}
+
+/**** 回复属性获取 ****/
+void get_reply_Data(String ID) 
+{
+  JsonDocument doc;
+  doc["id"] = ID;  // 使用时间戳作为唯一ID
+  doc["code"] = "200";
+  doc["msg"]= "success";
+  doc["data"]["led"]= digitalRead(19);
+
+  String payload;
+  serializeJson(doc, payload);
+  if (client.publish(pubTopic, payload.c_str())) 
+  {
+    Serial.println("send data success");
   } 
   else 
   {
