@@ -30,8 +30,8 @@ const char* api_key = "version=2018-10-31&res=products%2F61041c855G%2Fdevices%2F
 /********* MQTT 主题 *********/
 const char* pubTopic = "$sys/61041c855G/test-v1/thing/property/post";
 const char* replyTopic="$sys/61041c855G/test-v1/thing/property/post/reply";
-const char* getTopic = "$sys/61041c855G/test-v1/thing/sub/property/get";
-const char* get_replyTopic = "$sys/61041c855G/test-v1/thing/sub/property/get_reply";
+const char* getTopic = "$sys/61041c855G/test-v1/thing/property/get";
+const char* get_replyTopic = "$sys/61041c855G/test-v1/thing/property/get_reply";
 const char* setTopic = "$sys/61041c855G/test-v1/thing/property/set";
 const char* set_replayTopice ="$sys/61041c855G/test-v1/thing/property/set_reply";
 
@@ -183,11 +183,11 @@ void set_reply_Data(String ID)
   serializeJson(doc, payload);
   if (client.publish(set_replayTopice, payload.c_str())) 
   {
-    Serial.println("send data: " + payload);
+    Serial.println("send set_reply_data: " + payload);
   } 
   else 
   {
-    Serial.println("send data fail");
+    Serial.println("send set_reply_data fail");
   }
 
   delay(200);
@@ -204,13 +204,13 @@ void get_reply_Data(String ID)
 
   String payload;
   serializeJson(doc, payload);
-  if (client.publish(pubTopic, payload.c_str())) 
+  if (client.publish(get_replyTopic, payload.c_str())) 
   {
-    Serial.println("send data success");
+    Serial.println("send get_reply_data success"+ payload);
   } 
   else 
   {
-    Serial.println("send data fail");
+    Serial.println("send get_reply_data fail");
   }
 
   delay(200);
@@ -229,31 +229,49 @@ void parseJSON(const char* json) {
     return;
   }
 
-  if (doc["params"].isNull()) { 
+  if (!doc.containsKey("params")) 
+  {
     return;
+  }
+
+  if (doc["params"].is<JsonArray>()) 
+  {
+    JsonArray paramsArray = doc["params"];
+    for (JsonVariant value : paramsArray) 
+    {
+        if (value.as<String>() == "led") 
+        {
+            String ID = doc["id"]; 
+            get_reply_Data(ID);
+            return; 
+        }
+    }
   }
 
   JsonObject params = doc["params"];
-  
-  if (params["led-controller"].isNull()) {
+  if (params["led-controller"].isNull()) 
+  {
     return;
   }
-
-  const char* ledState = params["led-controller"];
-  Serial.print("LED : ");
-  Serial.println(ledState);
-
-  String ID = doc["id"];
-
-  if (strcmp(ledState, "led-ON") == 0) 
+  else 
   {
-    digitalWrite(19, HIGH);
-    set_reply_Data(ID); 
-  } 
-  else if (strcmp(ledState, "led-OF") == 0)
-  {
-    digitalWrite(19, LOW);
-    set_reply_Data(ID); 
+    const char* ledState = params["led-controller"];
+    Serial.print("LED : ");
+    Serial.println(ledState);
+
+    String ID = doc["id"];
+
+    if (strcmp(ledState, "led-ON") == 0) 
+    {
+      digitalWrite(19, HIGH);
+      set_reply_Data(ID); 
+    } 
+    else if (strcmp(ledState, "led-OF") == 0)
+    {
+      digitalWrite(19, LOW);
+      set_reply_Data(ID); 
+    }
   }
+
 
 }
