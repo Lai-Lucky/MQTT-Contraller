@@ -7,6 +7,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <esp_task_wdt.h>
 
 /************** 函数声明 ***************/
 void setup_wifi();
@@ -30,10 +31,13 @@ const char* api_key = "version=2018-10-31&res=products%2F61041c855G%2Fdevices%2F
 /********* MQTT 主题 *********/
 const char* pubTopic = "$sys/61041c855G/controller/thing/property/post";
 const char* replyTopic="$sys/61041c855G/controller/thing/property/post/reply";
-const char* getTopic = "$sys/61041c855G/controller/thing/sub/property/get";//获取子设备的属性
-const char* get_replyTopic = "$sys/61041c855G/controller/thing/sub/property/get_reply";//获取子设备属性和回复
-const char* setTopic ="$sys/61041c855G/controller/thing/sub/property/set";//设置子设备的属性
-const char* set_replyTopic ="$sys/61041c855G/controller/thing/sub/property/set_reply";//获取设置属性回复
+const char* getTopic = "$sys/61041c855G/test-v1/thing/property/get";
+const char* get_replyTopic = "$sys/61041c855G/test-v1/thing/property/get_reply";
+const char* setTopic = "$sys/61041c855G/test-v1/thing/property/set";
+const char* set_replyTopic ="$sys/61041c855G/test-v1/thing/property/set_reply";
+
+
+int last_time=0;
 
 
 WiFiClient espClient;
@@ -47,6 +51,7 @@ void setup() {
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
+  last_time=millis();
 }
 
 void loop() {
@@ -59,15 +64,18 @@ void loop() {
   }
   client.loop();
 
-  getSensorData();
-
+  if(millis()-last_time >= 2000)
+  {
+    getSensorData();
+    last_time=millis();
+  }
+    
   if(Serial.available())
   {
     serial_data=Serial.readString();
     setSensorData(serial_data);
   }
 
-  delay(500);
 }
 
 
@@ -99,13 +107,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print((char)payload[i]);
   }
 
-  // // 转换 payload 为字符串
-  // char json[length + 1];
-  // memcpy(json, payload, length);
-  // json[length] = '\0';
-
-  // // 调用解析函数
-  // parseJSON(json);
 
   Serial.println();
   Serial.println();
@@ -124,7 +125,6 @@ void reconnect() {
       client.subscribe(replyTopic); // 订阅系统回复属性下发
       client.subscribe(get_replyTopic); // 订阅子设备属性下发
       client.subscribe(set_replyTopic); // 订阅子设备设置属性反馈下发
-
     } 
     else 
     {
@@ -152,23 +152,18 @@ void reconnect() {
 /**** 获取子设备属性 ****/
 void getSensorData() 
 {
+
   JsonDocument doc;
   // 设置顶层字段
   doc["id"] = millis();
   doc["version"] = "1.0";
 
-  // 创建嵌套对象
-  JsonObject params = doc["params"].to<JsonObject>();
-  params["deviceName"] = "led";
-  params["productID"] = "61041c855G";
-
-  // 创建嵌套数组
-  JsonArray paramList = params["params"].to<JsonArray>();
-  paramList.add("led");
-
+  JsonArray params = doc.createNestedArray("params");
+  params.add("led");
 
   String payload;
   serializeJson(doc, payload);
+
   if (client.publish(getTopic, payload.c_str())) 
   {
     Serial.println("send data success");
@@ -181,23 +176,21 @@ void getSensorData()
     Serial.println();
   }
 
-  delay(200);
+
 }
 
 /**** 设置子设备属性 ****/
 void setSensorData(String set_data) 
 {
   JsonDocument doc;
-  doc["id"] = String(millis());  // 使用时间戳作为唯一ID
+  doc["id"] = millis();
   doc["version"] = "1.0";
-  doc["params"]["deviceName"] = "led";
-  doc["params"]["productID"] = "61041c855G";
-  doc["params"]["params"]["led"] = set_data;
 
-  
+  doc["params"]["led-controller"]=set_data;
 
   String payload;
   serializeJson(doc, payload);
+
   if (client.publish(setTopic, payload.c_str())) 
   {
     Serial.println("send data success");
@@ -210,47 +203,6 @@ void setSensorData(String set_data)
     Serial.println();
   }
 
-  delay(500);
 }
 
 
-/**** 解析平台指令 ****/
-void parseJSON(const char* json) {
-  // 1. 修正 StaticJsonDocument 声明
-  JsonDocument doc; // 确保足够内存空间
-
-  // 2. 解析 JSON
-  DeserializationError error = deserializeJson(doc, json);
-  
-  if (error) {
-    Serial.println(error.c_str());
-    return;
-  }
-
-  if (doc["params"].isNull()) { 
-    return;
-  }
-
-  JsonObject params = doc["params"];
-  
-  if (params["led-controller"].isNull()) {
-    return;
-  }
-
-  const char* ledState = params["led-controller"];
-  Serial.print("LED : ");
-  Serial.println(ledState);
-
-  String ID = doc["id"];
-
-  if (strcmp(ledState, "led-ON") == 0) 
-  {
-    digitalWrite(19, HIGH);
-
-  } 
-  else if (strcmp(ledState, "led-OF") == 0)
-  {
-    digitalWrite(19, LOW);
-  }
-
-}
