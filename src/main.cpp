@@ -1,87 +1,71 @@
-// 攀登：补光灯控制 - OneNet 物联网接入
+// 补光灯控制 - OneNet物联网接入（HTTP API版）
 // 供电：12V
 // 通信：RS485-TTL
 
- 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <PubSubClient.h>
+#include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <esp_task_wdt.h>
 
 /************** 函数声明 ***************/
 void setup_wifi();
-void callback(char* topic, byte* payload, unsigned int length);
-void reconnect();
 void getSensorData();
-void setSensorData(String set_data);
-void parseJSON(const char* json);
+void getnewSensorData();
+void setSensorData(String value);
 
-/************** WiFi 配置 **************/
+/************** WiFi配置 **************/
 const char* ssid = "abc";         // WiFi SSID
-const char* password = "12345678"; // WiFi 密码
+const char* password = "12345678"; // WiFi密码
 
-/************ OneNet MQTT 配置 ************/
-const char* mqtt_server = "mqtts.heclouds.com";  
-const int mqtt_port = 1883; 
-const char* device_id = "controller";    
-const char* product_id = "61041c855G"; 
-const char* api_key = "version=2018-10-31&res=products%2F61041c855G%2Fdevices%2Fcontroller&et=999986799814791288&method=md5&sign=09ZpQDMPvLiXxKr5JQiYeg%3D%3D";
+/************* OneNet API配置 *************/
+const char* api_key = "version=2018-10-31&res=products%2F61041c855G%2Fdevices%2Fcontroller&et=2032360000&method=md5&sign=HWXh9%2BSETyFY7tNHvIS1qQ%3D%3D";  
+const char* device_id = "controller"; // 主设备ID
+const char* sub_device_id = "test-v1"; // 子设备ID
+const char* product_id = "61041c855G"; //PID
 
-/********* MQTT 主题 *********/
-const char* pubTopic = "$sys/61041c855G/controller/thing/property/post";
-const char* replyTopic="$sys/61041c855G/controller/thing/property/post/reply";
-const char* getTopic = "$sys/61041c855G/test-v1/thing/property/get";
-const char* get_replyTopic = "$sys/61041c855G/test-v1/thing/property/get_reply";
-const char* setTopic = "$sys/61041c855G/test-v1/thing/property/set";
-const char* set_replyTopic ="$sys/61041c855G/test-v1/thing/property/set_reply";
+// API端点配置
+const char* get_property_url = "https://iot-api.heclouds.com/thingmodel/query-device-property-detail"; // 属性获取地址
+const char* set_property_url = "https://iot-api.heclouds.com/thingmodel/set-device-property"; // 属性设置地址
+const char* getnew_property_url = "https://iot-api.heclouds.com/thingmodel/query-device-property";// 最新属性查询地址
+// 全局定时变量
+unsigned long last_get_time = 0;
+const long get_interval = 5000; // 5秒获取间隔
 
-
-int last_time=0;
-
-
-WiFiClient espClient;
-PubSubClient client(espClient);
-
+WiFiClientSecure client;
+HTTPClient http;
 
 void setup() {
 
   Serial.begin(9600);
-
   setup_wifi();
-  client.setServer(mqtt_server, mqtt_port);
-  client.setCallback(callback);
-  last_time=millis();
+  last_get_time = millis();
+
+  // 配置HTTPS（生产环境需配置CA证书）
+  client.setInsecure(); // 临时跳过证书验证
+  // client.setCACert(onenet_root_ca); // 正式环境需配置
+
 }
 
 void loop() {
-
   String serial_data;
-
-  if (!client.connected()) 
+  // 定时获取设备状态
+  if (millis() - last_get_time >= get_interval) 
   {
-    reconnect();
-  }
-  client.loop();
-
-  if(millis()-last_time >= 2000)
-  {
-    getSensorData();
-    last_time=millis();
-  }
-    
-  if(Serial.available())
-  {
-    serial_data=Serial.readString();
-    setSensorData(serial_data);
+    getnewSensorData();
+    last_get_time = millis();
   }
 
+  // 串口控制指令处理
+  if (Serial.available())
+  {
+    serial_data=Serial.readString().substring(0,6);
+    setSensorData(serial_data); 
+  }
 }
 
-
-/************* WiFi 连接 *************/
+/************* WiFi连接 *************/
 void setup_wifi() {
-  Serial.println("连接 WiFi...");
+  Serial.println("连接WiFi...");
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) 
@@ -90,119 +74,138 @@ void setup_wifi() {
     Serial.print(".");
   }
 
-  Serial.println("\nWiFi 连接成功!");
-  Serial.print("IP 地址: ");
+  Serial.println("\nWiFi连接成功!");
+  Serial.print("IP地址: ");
   Serial.println(WiFi.localIP());
 }
 
-/************* MQTT 订阅回调函数 *************/
-void callback(char* topic, byte* payload, unsigned int length) {
-
-
-  Serial.print("收到 MQTT 消息，主题: \n");
-  Serial.println(topic);
-  Serial.print("内容: ");
-  for (int i = 0; i < length; i++) 
+/************* 获取设备属性 *************/
+// （设备响应过慢，容易响应超时，不建议使用）
+void getSensorData() {
+  if (WiFi.status() != WL_CONNECTED) 
   {
-    Serial.print((char)payload[i]);
+    Serial.println("WiFi连接已断开");
+    return;
+  }
+    // 构造请求体
+    JsonDocument doc;
+    doc["product_id"] = product_id;
+    doc["device_name"] = sub_device_id;
+    
+    JsonArray params = doc["params"].to<JsonArray>();
+    params.add("led");
+    
+    String payload;
+    serializeJson(doc, payload);
+    
+    http.begin(client, get_property_url);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", api_key);
+    http.setTimeout(25000);  // 设置20秒超时
+
+    int httpCode = http.POST(payload);
+    if (httpCode == HTTP_CODE_OK) 
+    {
+      String response = http.getString();
+      Serial.print("[Get] 响应: ");
+      Serial.println(response);
+    } 
+    else
+    {
+      Serial.printf("[Get] HTTP错误码: %d\n", httpCode);
+    }
+    http.end();
+  }
+
+/************* 设备属性最新数据查询 *************/
+void getnewSensorData() {
+  if (WiFi.status() != WL_CONNECTED) 
+  {
+    Serial.println("WiFi连接已断开");
+    return;
+  }
+    
+  // 构造带查询参数的URL
+  String url = String(getnew_property_url) + 
+  "?product_id=" + product_id + 
+  "&device_name=" + sub_device_id;
+
+  // 发送GET请求
+  http.begin(client, url);
+  http.addHeader("Authorization", api_key); // 使用动态Token
+  http.setTimeout(10000); // 10秒超时
+
+
+  int httpCode = http.GET(); 
+  if (httpCode == HTTP_CODE_OK) 
+  {
+    String response = http.getString();
+
+    // Serial.print("[GetNew] 响应: ");
+    // Serial.println(response);
+    // Serial.println();
+
+    // 解析JSON响应
+    JsonDocument doc;
+    deserializeJson(doc, response);
+    JsonArray data = doc["data"];
+    Serial.println("-----属性值列表-----");
+    for (JsonObject item : data) 
+    {
+      if (item["identifier"] == "led" && !item["value"].isNull()) 
+      {
+        Serial.print("LED状态: ");
+        Serial.println(item["value"].as<String>());
+      }
+    }
+  } 
+  else 
+  {
+    Serial.printf("[GetNew] HTTP错误码: %d\n", httpCode);
+    Serial.println("错误详情: " + http.getString());
+  }
+  http.end();
   }
 
 
-  Serial.println();
-  Serial.println();
-
-}
-
-/************* 连接 MQTT 服务器 *************/
-void reconnect() {
-  while (!client.connected()) 
+/************* 设置设备属性 *************/
+void setSensorData(String value) {
+  if (WiFi.status() != WL_CONNECTED) 
   {
-    Serial.print("连接 OneNet MQTT...");
+    Serial.println("WiFi连接已断开");
+    return;
+  }
 
-    if (client.connect(device_id, product_id, api_key)) 
+  JsonDocument doc;
+  doc["product_id"] = product_id;
+  doc["device_name"] = sub_device_id;
+  doc["params"]["led-controller"] = value;  
+
+  String payload;
+  serializeJson(doc, payload);
+
+  http.begin(client, set_property_url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", api_key);
+
+  int httpCode = http.POST(payload);
+  if (httpCode == HTTP_CODE_OK) {
+    String response = http.getString();
+    JsonDocument resDoc;
+    DeserializationError error = deserializeJson(resDoc, response);
+    
+    if (!error && resDoc["code"] == 200) 
     {
-      Serial.println("连接成功!");
-      client.subscribe(replyTopic); // 订阅系统回复属性下发
-      client.subscribe(get_replyTopic); // 订阅子设备属性下发
-      client.subscribe(set_replyTopic); // 订阅子设备设置属性反馈下发
+      Serial.println("设置成功!消息ID: " + resDoc["data"]["id"].as<String>());
     } 
     else 
     {
-      Serial.printf("连接失败, 状态码=%d, 5秒后重试...\n", client.state());
-      switch (client.state()) 
-      {
-        case -4: Serial.println("连接超时"); break;
-        case -3: Serial.println("连接丢失"); break;
-        case -2: Serial.println("连接失败"); break;
-        case -1: Serial.println("断开连接"); break;
-        case 1: Serial.println("协议错误"); break;
-        case 2: Serial.println("客户端标识无效"); break;
-        case 3: Serial.println("服务器不可用"); break;
-        case 4: Serial.println("用户名或密码错误"); break;
-        case 5: Serial.println("未授权"); break;
-        default: Serial.println("未知错误");
-      }
-      delay(5000);
+      Serial.println("设置失败: " + response);
     }
-  }
-}
-
-/************JSON数据相关函数************/
-
-/**** 获取子设备属性 ****/
-void getSensorData() 
-{
-
-  JsonDocument doc;
-  // 设置顶层字段
-  doc["id"] = millis();
-  doc["version"] = "1.0";
-
-  JsonArray params = doc.createNestedArray("params");
-  params.add("led");
-
-  String payload;
-  serializeJson(doc, payload);
-
-  if (client.publish(getTopic, payload.c_str())) 
-  {
-    Serial.println("send data success");
-    Serial.printf(payload.c_str());
-    Serial.println();
   } 
   else 
   {
-    Serial.println("send data fail");
-    Serial.println();
+    Serial.printf("[Set] HTTP错误码: %d\n", httpCode);
   }
-
-
+  http.end();
 }
-
-/**** 设置子设备属性 ****/
-void setSensorData(String set_data) 
-{
-  JsonDocument doc;
-  doc["id"] = millis();
-  doc["version"] = "1.0";
-
-  doc["params"]["led-controller"]=set_data;
-
-  String payload;
-  serializeJson(doc, payload);
-
-  if (client.publish(setTopic, payload.c_str())) 
-  {
-    Serial.println("send data success");
-    Serial.printf(payload.c_str());
-    Serial.println();
-  } 
-  else 
-  {
-    Serial.println("send data fail");
-    Serial.println();
-  }
-
-}
-
-
