@@ -25,7 +25,7 @@ const char* mqtt_server = "mqtts.heclouds.com";
 const int mqtt_port = 1883; 
 const char* device_id = "test-v1";    
 const char* product_id = "61041c855G"; 
-const char* api_key = "version=2018-10-31&res=products%2F61041c855G%2Fdevices%2Ftest-v1&et=2032360000 &method=md5&sign=c63mOTK1AkevaHWeQAhBcw%3D%3D";
+const char* api_key = "version=2018-10-31&res=products%2F61041c855G%2Fdevices%2Ftest-v1&et=2033612365&method=md5&sign=KFw3%2BuI567H4lI5emUhRmg%3D%3D";
 
 /********* MQTT 主题 *********/
 const char* pubTopic = "$sys/61041c855G/test-v1/thing/property/post";
