@@ -229,7 +229,7 @@ void parseJSON(const char* json) {
     return;
   }
 
-  if (!doc.containsKey("params")) 
+  if (doc["params"].isNull()) 
   {
     return;
   }
