@@ -175,7 +175,7 @@ void sendSensorData(int data)
 void set_reply_Data(String ID) 
 {
   JsonDocument doc;
-  doc["id"] = ID;  // 使用时间戳作为唯一ID
+  doc["id"] = ID;  
   doc["code"] = "200";
   doc["msg"]= "success";
 
