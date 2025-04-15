@@ -33,7 +33,7 @@ const char* replyTopic="$sys/61041c855G/test-v1/thing/property/post/reply";
 const char* getTopic = "$sys/61041c855G/test-v1/thing/property/get";
 const char* get_replyTopic = "$sys/61041c855G/test-v1/thing/property/get_reply";
 const char* setTopic = "$sys/61041c855G/test-v1/thing/property/set";
-const char* set_replayTopice ="$sys/61041c855G/test-v1/thing/property/set_reply";
+const char* set_replayTopic ="$sys/61041c855G/test-v1/thing/property/set_reply";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -181,7 +181,7 @@ void set_reply_Data(String ID)
 
   String payload;
   serializeJson(doc, payload);
-  if (client.publish(set_replayTopice, payload.c_str())) 
+  if (client.publish(set_replayTopic, payload.c_str())) 
   {
     Serial.println("send set_reply_data: " + payload);
   } 
